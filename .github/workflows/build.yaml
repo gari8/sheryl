@@ -1,0 +1,52 @@
+name: Go
+on:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Install dependencies
+        run: go get ./...
+
+      - name: Build
+        run: go build -o ./bin/sheryl ./cmd/sheryl/.
+
+      - name: Test with the Go CLI
+        run: go test ./...
+
+      - name: Check Tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const subProcess = require('child_process').execSync;
+
+            // Get the current version of sheryl CLI
+            const version = subProcess('./bin/sheryl --version').toString().trim().split(' ').pop();
+            console.log(`Current sheryl CLI version: ${version}`);
+            
+            let latestRelease;
+            try {
+              // 最新リリース情報を取得
+              latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+
+              console.log(`Latest release found: ${latestRelease.data.tag_name}`);
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('No releases found. This will be the first release.');
+              } else {
+                console.error('Unexpected error:', error);
+                throw error;
+              }
+            }

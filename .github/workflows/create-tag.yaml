@@ -1,0 +1,61 @@
+name: Go
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create_tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Install dependencies
+        run: go get ./...
+
+      - name: Build
+        run: go build -o ./bin/sheryl ./cmd/sheryl/.
+
+      - name: Test with the Go CLI
+        run: go test ./...
+
+      - name: Check and Create Tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const subProcess = require('child_process').execSync;
+
+            // Get the current version of sheryl CLI
+            const version = subProcess('./bin/sheryl --version').toString().trim().split(' ').pop();
+            console.log(`Current sheryl CLI version: ${version}`);
+            
+            let tagExists = false;
+            try {
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${version}`,
+              });
+              tagExists = true;
+            } catch (error) {
+              if (error.status === 404) {
+                console.log(`Tag ${version} does not exist.`);
+              } else {
+                console.error(error);
+                throw error;
+              }
+            }
+            
+            if (!tagExists) {
+              console.log(`Creating a new tag: ${version}`);
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${version}`,
+                sha: context.sha,
+              });
+            }

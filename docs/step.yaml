@@ -1,0 +1,17 @@
+env:
+  REQUEST_PATH: https://google.com
+steps:
+  - name: list
+    cmd: |
+      ls -A1
+  - name: show
+    cmd: |
+      echo 'cmd: {{ .list.cmd }}'
+  - name: ps
+    cmd: |
+      ps aux | grep {{ .show.pid }}
+  - name: curl
+    retries: 3
+    interval: 1s
+    cmd: |
+      curl -I $REQUEST_PATH
