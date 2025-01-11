@@ -2,9 +2,8 @@ package types
 
 import (
 	"bytes"
-	"cmp"
 	"context"
-	"log/slog"
+	"github.com/gari8/sheryl/pkg/utils"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -25,6 +24,8 @@ type Step struct {
 	Duration time.Duration
 	PID      int
 	Verbose  bool
+	Failed   bool
+	Err      error
 }
 
 type StepOutput struct {
@@ -58,49 +59,21 @@ func (s *Step) ToStepOutput() *StepOutput {
 }
 
 type SimpleStepOutput struct {
-	Name   string `json:"name,omitempty"`
-	Cmd    string `json:"cmd,omitempty"`
-	Output string `json:"output,omitempty"`
+	Name     string        `json:"name,omitempty"`
+	Env      []string      `json:"env,omitempty"`
+	Cmd      string        `json:"cmd,omitempty"`
+	Output   string        `json:"output,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"`
 }
 
 func (s *Step) ToSimpleStepOutput() *SimpleStepOutput {
 	return &SimpleStepOutput{
-		Name:   s.Name,
-		Cmd:    s.Cmd,
-		Output: s.Output,
+		Name:     s.Name,
+		Env:      s.Env,
+		Cmd:      s.Cmd,
+		Output:   s.Output,
+		Duration: s.Duration,
 	}
-}
-
-func (s *Step) Attributes(attrs ...any) []any {
-	var val reflect.Value
-	var typ reflect.Type
-	if s.Verbose {
-		val = reflect.ValueOf(s.ToStepOutput())
-		typ = reflect.TypeOf(s.ToStepOutput())
-	} else {
-		val = reflect.ValueOf(s.ToSimpleStepOutput())
-		typ = reflect.TypeOf(s.ToSimpleStepOutput())
-	}
-
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-		typ = typ.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
-		return nil
-	}
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		fieldName, omitempty := getJsonTag(field)
-		fieldValue := val.Field(i)
-		if fieldValue.IsZero() && omitempty {
-			continue
-		}
-		attrs = append(attrs, slog.Any(fieldName, fieldValue.Interface()))
-	}
-	return attrs
 }
 
 func (s *Step) Run(ctx context.Context, beforeSteps map[string]*Step) ([]byte, error) {
@@ -129,7 +102,7 @@ func (s *Step) Run(ctx context.Context, beforeSteps map[string]*Step) ([]byte, e
 	//if sysUsage, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage); ok {
 	//
 	//}
-	if err != nil {
+	if s.Failed = err != nil; s.Failed {
 		return nil, err
 	}
 	return output, nil
@@ -158,25 +131,11 @@ func (s *Step) toBeMap() map[string]any {
 	if val.Kind() == reflect.Struct {
 		for i := 0; i < val.NumField(); i++ {
 			field := typ.Field(i)
-			fieldName, _ := getJsonTag(field)
+			fieldName, _ := utils.GetJsonTag(field)
 			if fieldName != "" {
 				result[fieldName] = val.Field(i).Interface()
 			}
 		}
 	}
 	return result
-}
-
-func getJsonTag(field reflect.StructField) (tag string, omitempty bool) {
-	// json tag を取得
-	var jsonTag string
-	jsonTags := strings.Split(field.Tag.Get("json"), ",")
-	if len(jsonTags) > 0 {
-		jsonTag = jsonTags[0]
-	}
-	// omitempty があるか確認
-	if len(jsonTags) > 1 {
-		omitempty = jsonTags[1] == "omitempty"
-	}
-	return cmp.Or(jsonTag, strings.ToLower(field.Name)), omitempty
 }
